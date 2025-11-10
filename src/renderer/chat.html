@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Chat</title>
+  <link rel="stylesheet" href="chat.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="chat-header">
+      <h1>AI Assistant + Overlay</h1>
+    </div>
+    
+    <div id="messages-container" class="messages-container">
+      <div class="message system">
+        <div class="message-content">
+          Welcome! I'm your AI assistant. How can I help you today?
+        </div>
+      </div>
+    </div>
+    
+    <div class="input-container">
+      <textarea 
+        id="message-input" 
+        placeholder="Type your message here..."
+        rows="1"
+      ></textarea>
+      <button id="btn-voice" class="voice-btn" title="Voice Input (Click to speak)">
+        <span id="voice-icon">🎤</span>
+      </button>
+      <button id="btn-send" class="send-btn" title="Send">
+        <span>Send</span>
+      </button>
+    </div>
+  </div>
+  
+  <script type="module" src="chat.js"></script>
+</body>
+</html>

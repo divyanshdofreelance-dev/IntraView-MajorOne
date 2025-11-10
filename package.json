@@ -1,0 +1,93 @@
+{
+  "name": "meeting-overlay-app",
+  "version": "0.1.0",
+  "description": "Advanced overlay application for meeting platforms with stealth mode, live transcription, and audio controls",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "start": "npm run build:overlay && npm run build && electron .",
+    "dev": "concurrently \"npm run watch:main\" \"npm run watch:renderer\" \"wait-on dist/main/main.js && electron .\"",
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "tsc -p tsconfig.main.json && npm run copy:scripts",
+    "build:renderer": "tsc -p tsconfig.renderer.json && npm run copy:renderer",
+    "build:overlay": "cd overlay && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release",
+    "build:overlay:debug": "cd overlay && cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build --config Debug",
+    "clean:overlay": "rimraf overlay/build",
+    "watch:main": "tsc -w -p tsconfig.main.json",
+    "watch:renderer": "tsc -w -p tsconfig.renderer.json",
+    "copy:renderer": "copyfiles -u 1 \"src/renderer/**/*.html\" \"src/renderer/**/*.css\" dist",
+    "copy:scripts": "copyfiles -u 1 \"src/main/**/*.ps1\" dist",
+    "clean": "rimraf dist",
+    "rebuild": "electron-rebuild -f -w node-audio-capture",
+    "package": "electron-builder",
+    "package:win": "electron-builder --win",
+    "package:mac": "electron-builder --mac",
+    "test": "jest",
+    "lint": "eslint src --ext .ts"
+  },
+  "keywords": [
+    "electron",
+    "overlay",
+    "transcription",
+    "meeting",
+    "stealth"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "concurrently": "^8.2.2",
+    "copyfiles": "^2.4.1",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "electron-rebuild": "^3.2.9",
+    "eslint": "^8.54.0",
+    "jest": "^29.7.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.2",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "electron-store": "^8.1.0",
+    "keytar": "^7.9.0",
+    "koffi": "^2.14.1",
+    "marked": "^17.0.0"
+  },
+  "build": {
+    "appId": "com.meetingoverlay.app",
+    "productName": "Meeting Overlay",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.ico",
+      "sign": "./scripts/sign-win.js"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
