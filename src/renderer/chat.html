@@ -10,13 +10,45 @@
 <body>
   <div class="chat-container">
     <div class="chat-header">
-      <h1>AI Assistant + Overlay</h1>
+      <h1>IntraView</h1>
+      <div class="header-buttons">
+        <button id="btn-settings" class="icon-btn" title="Settings">
+          ⚙️
+        </button>
+        <button id="btn-documents" class="icon-btn" title="Show uploaded documents">
+          📚
+        </button>
+        <button id="btn-upload" class="icon-btn" title="Upload Document">
+          📄
+        </button>
+      </div>
+    </div>
+    
+    <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
+      <div class="drop-overlay-content">
+         <div class="drop-icon">📁</div>
+         <div class="drop-text">
+           <strong>Drop documents to upload</strong>
+           <span>PDF, Word, Markdown, or Text files</span>
+         </div>
+      </div>
+    </div>
+    
+    <div id="documents-panel" class="documents-panel" style="display: none;">
+      <div class="documents-header">
+        <h3>Uploaded Documents</h3>
+        <button id="btn-close-docs" class="close-btn">×</button>
+      </div>
+      <div id="documents-list" class="documents-list"></div>
+      <div class="documents-footer">
+        <button id="btn-clear-docs" class="clear-btn">Clear All</button>
+      </div>
     </div>
     
     <div id="messages-container" class="messages-container">
       <div class="message system">
         <div class="message-content">
-          Welcome! I'm your AI assistant. How can I help you today?
+          Welcome! I'm your IntraView. Developed By Divyansh, Kartik, Sujay
         </div>
       </div>
     </div>

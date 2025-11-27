@@ -5,12 +5,24 @@ export {};
 declare const electronAPI: any;
 declare const marked: any;
 
-interface Message {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
+// Type definitions for messages
+interface MessageContent {
+  type: 'text' | 'image_url';
+  text?: string;
+  image_url?: {
+    url: string;
+  };
 }
 
+interface Message {
+  role: 'user' | 'assistant' | 'system';
+  content: string | MessageContent[];
+}
+
+const SUPPORTED_FILE_EXTENSIONS = ['pdf', 'docx', 'doc', 'txt', 'md'];
+
 let conversationHistory: Message[] = [];
+let currentScreenshotImage: string | null = null; // Store current screenshot image data URL
 
 // DOM Elements - will be initialized after DOM loads
 let messagesContainer: HTMLDivElement;
@@ -18,6 +30,13 @@ let messageInput: HTMLTextAreaElement;
 let sendBtn: HTMLButtonElement;
 let voiceBtn: HTMLButtonElement;
 let voiceIcon: HTMLSpanElement;
+let uploadBtn: HTMLButtonElement;
+let documentsPanel: HTMLDivElement;
+let documentsList: HTMLDivElement;
+let closeDocsBtn: HTMLButtonElement;
+let clearDocsBtn: HTMLButtonElement;
+let documentsToggleBtn: HTMLButtonElement;
+let dropOverlay: HTMLDivElement;
 
 // Speech recognition
 let recognition: any = null;
@@ -33,6 +52,13 @@ function initialize() {
   sendBtn = document.getElementById('btn-send') as HTMLButtonElement;
   voiceBtn = document.getElementById('btn-voice') as HTMLButtonElement;
   voiceIcon = document.getElementById('voice-icon') as HTMLSpanElement;
+  uploadBtn = document.getElementById('btn-upload') as HTMLButtonElement;
+  documentsToggleBtn = document.getElementById('btn-documents') as HTMLButtonElement;
+  documentsPanel = document.getElementById('documents-panel') as HTMLDivElement;
+  documentsList = document.getElementById('documents-list') as HTMLDivElement;
+  closeDocsBtn = document.getElementById('btn-close-docs') as HTMLButtonElement;
+  clearDocsBtn = document.getElementById('btn-clear-docs') as HTMLButtonElement;
+  dropOverlay = document.getElementById('drop-overlay') as HTMLDivElement;
   
   console.log('[Chat] DOM elements found:', {
     messagesContainer: !!messagesContainer,
@@ -45,6 +71,7 @@ function initialize() {
   initializeSpeechRecognition();
   
   setupEventListeners();
+  loadDocuments();
   messageInput.focus();
   console.log('[Chat] Initialization complete');
 }
@@ -64,6 +91,15 @@ function setupEventListeners() {
       window.electronAPI.window.setIgnoreMouseEvents(true);
     }
   });
+
+  // Settings button click
+  const settingsBtn = document.getElementById('btn-settings');
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', () => {
+      console.log('[Chat] Settings button clicked!');
+      electronAPI.window.openSettings();
+    });
+  }
   
   // Send button click
   sendBtn.addEventListener('click', () => {
@@ -90,13 +126,103 @@ function setupEventListeners() {
       handleSendMessage();
     }
   });
+
+  // ESC key to close panels/windows
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      // Close documents panel if open
+      if (documentsPanel && documentsPanel.style.display !== 'none') {
+        documentsPanel.style.display = 'none';
+        e.preventDefault();
+      }
+    }
+  });
   
   // Auto-resize textarea
   messageInput.addEventListener('input', () => {
     messageInput.style.height = 'auto';
     messageInput.style.height = messageInput.scrollHeight + 'px';
   });
-  
+
+  // Document upload button
+  if (uploadBtn) {
+    uploadBtn.addEventListener('click', handleUploadDocument);
+  }
+
+  // Documents panel controls
+  if (closeDocsBtn) {
+    closeDocsBtn.addEventListener('click', () => {
+      documentsPanel.style.display = 'none';
+    });
+  }
+
+  if (documentsToggleBtn) {
+    documentsToggleBtn.addEventListener('click', toggleDocumentsPanel);
+  }
+
+  if (clearDocsBtn) {
+    clearDocsBtn.addEventListener('click', handleClearDocuments);
+  }
+
+  setupDragAndDrop();
+
+  // Listen for screenshot events
+  if (window.electronAPI?.screenshot) {
+    // Handle screenshot captured notification (shown immediately after selection)
+    window.electronAPI.screenshot.onCaptured?.(() => {
+      console.log('[Chat] Screenshot captured');
+      addMessage('system', '📸 Screenshot captured! You can now write text about it.');
+      messageInput.focus();
+    });
+
+    // Handle image ready from screenshot
+    window.electronAPI.screenshot.onImageReady?.((data: { imageDataUrl: string }) => {
+      console.log('[Chat] Screenshot image ready');
+      currentScreenshotImage = data.imageDataUrl;
+      addMessage('system', '🖼️ Image ready! Type your question and press Send to analyze the image.');
+      messageInput.focus();
+    });
+
+    // Handle extracted text from screenshot OCR (kept for backward compatibility)
+    window.electronAPI.screenshot.onTextExtracted?.((data: any) => {
+      console.log('[Chat] Screenshot text extracted:', data);
+      
+      // Pre-fill the input with extracted text (user can edit or write their own)
+      if (data.text && data.text.trim().length > 0) {
+        const extractedText = data.text.trim();
+        // If input is empty, pre-fill it; otherwise append
+        if (!messageInput.value.trim()) {
+          messageInput.value = extractedText;
+        } else {
+          // If user already started typing, append on new line
+          messageInput.value += '\n\n' + extractedText;
+        }
+        messageInput.style.height = 'auto';
+        messageInput.style.height = messageInput.scrollHeight + 'px';
+        
+        // Show additional info about extracted text
+        if (data.confidence) {
+          addMessage('system', `📝 Extracted ${extractedText.length} characters from screenshot (${Math.round(data.confidence)}% confidence). You can edit the text above or write your own.`);
+        }
+        
+        // Focus the input
+        messageInput.focus();
+      }
+    });
+
+    // Handle screenshot errors
+    window.electronAPI.screenshot.onError?.((error: string) => {
+      console.error('[Chat] Screenshot error:', error);
+      addMessage('error', `Screenshot error: ${error}`);
+    });
+
+    // Handle processing state (OCR in progress)
+    window.electronAPI.screenshot.onProcessing?.((isProcessing: boolean) => {
+      // OCR processing happens after "Screenshot captured" message
+      // We don't need to show another message here
+    });
+  }
+
   console.log('[Chat] Event listeners set up successfully');
 }
 
@@ -105,8 +231,9 @@ async function handleSendMessage() {
   const message = messageInput.value.trim();
   console.log('[Chat] Message:', message);
   
-  if (!message) {
-    console.log('[Chat] Empty message, returning');
+  // Check if we have both message and image, or at least one
+  if (!message && !currentScreenshotImage) {
+    console.log('[Chat] Empty message and no image, returning');
     return;
   }
   
@@ -114,22 +241,45 @@ async function handleSendMessage() {
   messageInput.disabled = true;
   sendBtn.disabled = true;
   
-  // Add user message to UI
-  addMessage('user', message);
+  // Prepare message content (text + image if available)
+  let messageContent: string | MessageContent[];
   
-  // Clear input
+  if (currentScreenshotImage) {
+    // Include image in message
+    const contentParts: MessageContent[] = [];
+    if (message) {
+      contentParts.push({ type: 'text', text: message });
+    } else {
+      contentParts.push({ type: 'text', text: 'Please analyze this image.' });
+    }
+    contentParts.push({
+      type: 'image_url',
+      image_url: { url: currentScreenshotImage }
+    });
+    messageContent = contentParts;
+    
+    // Add user message to UI (show image indicator)
+    addMessage('user', message || '📸 [Image attached]');
+  } else {
+    // Text only
+    messageContent = message;
+    addMessage('user', message);
+  }
+  
+  // Clear input and reset screenshot
   messageInput.value = '';
   messageInput.style.height = 'auto';
+  currentScreenshotImage = null;
   
   // Add user message to history
-  conversationHistory.push({ role: 'user', content: message });
+  conversationHistory.push({ role: 'user', content: messageContent });
   
   // Show typing indicator
   const typingId = showTypingIndicator();
   
   try {
     // Send to AI
-    const response = await electronAPI.chat.sendMessage(message, conversationHistory);
+    const response = await electronAPI.chat.sendMessage(messageContent, conversationHistory);
     
     // Remove typing indicator
     removeTypingIndicator(typingId);
@@ -369,6 +519,211 @@ function toggleVoiceRecognition() {
       }
     }
   }
+}
+
+// Document handling functions
+function toggleDocumentsPanel() {
+  if (!documentsPanel) {
+    return;
+  }
+
+  const shouldShow = documentsPanel.style.display === 'none' || documentsPanel.style.display === '';
+  documentsPanel.style.display = shouldShow ? 'block' : 'none';
+
+  if (shouldShow) {
+    loadDocuments();
+  }
+}
+
+async function handleUploadDocument() {
+  try {
+    const document = await electronAPI.documents.upload();
+    if (document) {
+      addMessage('system', `Document "${document.name}" uploaded successfully! (${document.chunkCount} chunks)`);
+      if (documentsPanel) {
+        documentsPanel.style.display = 'block';
+      }
+      await loadDocuments();
+    }
+  } catch (error: any) {
+    addMessage('error', `Failed to upload document: ${error.message}`);
+  }
+}
+
+async function loadDocuments() {
+  try {
+    const documents = await electronAPI.documents.list();
+    if (documentsList) {
+      documentsList.innerHTML = '';
+      
+      if (documents.length === 0) {
+        documentsList.innerHTML = '<div class="no-documents">No documents uploaded</div>';
+        return;
+      }
+
+      documents.forEach((doc: any) => {
+        const docItem = document.createElement('div');
+        docItem.className = 'document-item';
+        docItem.innerHTML = `
+          <div class="document-info">
+            <span class="document-name">${doc.name}</span>
+            <span class="document-meta">${doc.chunkCount} chunks • ${new Date(doc.uploadedAt).toLocaleDateString()}</span>
+          </div>
+          <button class="delete-doc-btn" data-id="${doc.id}" title="Delete document">🗑️</button>
+        `;
+        
+        const deleteBtn = docItem.querySelector('.delete-doc-btn');
+        if (deleteBtn) {
+          deleteBtn.addEventListener('click', async () => {
+            try {
+              await electronAPI.documents.delete(doc.id);
+              addMessage('system', `Document "${doc.name}" deleted`);
+              await loadDocuments();
+            } catch (error: any) {
+              addMessage('error', `Failed to delete document: ${error.message}`);
+            }
+          });
+        }
+        
+        documentsList.appendChild(docItem);
+      });
+    }
+  } catch (error: any) {
+    console.error('Failed to load documents:', error);
+  }
+}
+
+async function handleClearDocuments() {
+  if (confirm('Are you sure you want to clear all uploaded documents?')) {
+    try {
+      await electronAPI.documents.clear();
+      addMessage('system', 'All documents cleared');
+      await loadDocuments();
+    } catch (error: any) {
+      addMessage('error', `Failed to clear documents: ${error.message}`);
+    }
+  }
+}
+
+function setupDragAndDrop() {
+  if (!dropOverlay) {
+    return;
+  }
+
+  let dragCounter = 0;
+
+  const showOverlay = () => dropOverlay.classList.add('visible');
+  const hideOverlay = () => {
+    dragCounter = 0;
+    dropOverlay.classList.remove('visible');
+  };
+
+  document.addEventListener('dragenter', (event: DragEvent) => {
+    if (!event.dataTransfer) {
+      return;
+    }
+    event.preventDefault();
+    dragCounter += 1;
+    if (shouldAcceptDrag(event.dataTransfer)) {
+      showOverlay();
+    }
+  });
+
+  document.addEventListener('dragover', (event: DragEvent) => {
+    if (!event.dataTransfer) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (!shouldAcceptDrag(event.dataTransfer)) {
+      event.dataTransfer.dropEffect = 'none';
+      hideOverlay();
+      return;
+    }
+
+    event.dataTransfer.dropEffect = 'copy';
+    showOverlay();
+  });
+
+  document.addEventListener('dragleave', (event: DragEvent) => {
+    if (!event.dataTransfer) {
+      return;
+    }
+    event.preventDefault();
+    dragCounter = Math.max(dragCounter - 1, 0);
+    if (dragCounter === 0) {
+      hideOverlay();
+    }
+  });
+
+  document.addEventListener('drop', async (event: DragEvent) => {
+    event.preventDefault();
+    hideOverlay();
+
+    const files = Array.from(event.dataTransfer?.files || []);
+    if (files.length === 0) {
+      return;
+    }
+
+    const supportedFiles = files.filter(file => isSupportedDocument(file.name) && fileHasPath(file));
+    if (supportedFiles.length === 0) {
+      addMessage('error', 'Only PDF, Word, Markdown, or Text files are supported.');
+      return;
+    }
+
+    let successCount = 0;
+    for (const file of supportedFiles) {
+      const filePath = (file as any).path as string;
+      try {
+        const document = await electronAPI.documents.ingest(filePath);
+        if (document) {
+          successCount += 1;
+          addMessage('system', `Document "${document.name}" uploaded successfully! (${document.chunkCount} chunks)`);
+        }
+      } catch (error: any) {
+        addMessage('error', `Failed to upload ${file.name}: ${error.message}`);
+      }
+    }
+
+    if (successCount > 0 && documentsPanel) {
+      documentsPanel.style.display = 'block';
+      await loadDocuments();
+    }
+  });
+}
+
+function shouldAcceptDrag(dataTransfer: DataTransfer | null): boolean {
+  if (!dataTransfer) {
+    return false;
+  }
+
+  if (dataTransfer.files && dataTransfer.files.length > 0) {
+    return Array.from(dataTransfer.files).some(file => isSupportedDocument(file.name));
+  }
+
+  if (dataTransfer.types) {
+    return Array.from(dataTransfer.types).includes('Files');
+  }
+
+  return false;
+}
+
+function fileHasPath(file: File): boolean {
+  return Boolean((file as any).path);
+}
+
+function isSupportedDocument(fileName: string): boolean {
+  const ext = getFileExtension(fileName);
+  return SUPPORTED_FILE_EXTENSIONS.includes(ext);
+}
+
+function getFileExtension(fileName: string): string {
+  const parts = fileName.split('.');
+  if (parts.length <= 1) {
+    return '';
+  }
+  return parts.pop()!.toLowerCase();
 }
 
 document.addEventListener('DOMContentLoaded', initialize);

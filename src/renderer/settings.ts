@@ -21,6 +21,14 @@ function setupEventListeners() {
   cancelBtn.addEventListener('click', () => {
     electronAPI.window.close();
   });
+
+  // ESC key to close settings window
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      electronAPI.window.close();
+      e.preventDefault();
+    }
+  });
 }
 
 async function loadSettings() {

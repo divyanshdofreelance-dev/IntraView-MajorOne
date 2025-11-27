@@ -1,6 +1,6 @@
 {
-  "name": "meeting-overlay-app",
-  "version": "0.1.0",
+  "name": "intraview",
+  "version": "1.0.0",
   "description": "Advanced overlay application for meeting platforms with stealth mode, live transcription, and audio controls",
   "main": "dist/main/main.js",
   "scripts": {
@@ -18,9 +18,12 @@
     "copy:scripts": "copyfiles -u 1 \"src/main/**/*.ps1\" dist",
     "clean": "rimraf dist",
     "rebuild": "electron-rebuild -f -w node-audio-capture",
-    "package": "electron-builder",
-    "package:win": "electron-builder --win",
-    "package:mac": "electron-builder --mac",
+    "package": "npm run build:all && electron-builder --win",
+    "package:win": "npm run build:all && electron-builder --win",
+    "package:mac": "npm run build:all && electron-builder --mac",
+    "package:portable": "npm run build:all && electron-builder --win portable",
+    "build:all": "npm run build:overlay && npm run build",
+    "dist": "npm run package",
     "test": "jest",
     "lint": "eslint src --ext .ts"
   },
@@ -31,7 +34,7 @@
     "meeting",
     "stealth"
   ],
-  "author": "Your Name",
+  "author": "IntraView",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.10.0",
@@ -53,25 +56,61 @@
     "electron-store": "^8.1.0",
     "keytar": "^7.9.0",
     "koffi": "^2.14.1",
-    "marked": "^17.0.0"
+    "mammoth": "^1.11.0",
+    "marked": "^17.0.0",
+    "pdfjs-dist": "^3.11.174",
+    "tesseract.js": "^5.0.4",
+    "screenshot-desktop": "^1.15.0"
   },
   "build": {
-    "appId": "com.meetingoverlay.app",
-    "productName": "Meeting Overlay",
+    "appId": "com.intraview.app",
+    "productName": "IntraView",
+    "copyright": "Copyright © 2025 IntraView",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
       "node_modules/**/*",
-      "package.json"
+      "package.json",
+      "eng.traineddata"
+    ],
+    "extraResources": [
+      {
+        "from": "overlay/build/bin/Release/IntraViewOverlay.exe",
+        "to": "overlay/IntraViewOverlay.exe"
+      },
+      {
+        "from": "eng.traineddata",
+        "to": "eng.traineddata"
+      }
     ],
     "win": {
       "target": [
-        "nsis"
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
       ],
-      "icon": "assets/icon.ico",
-      "sign": "./scripts/sign-win.js"
+      "requestedExecutionLevel": "asInvoker",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "IntraView",
+      "artifactName": "${productName}-Setup-${version}.exe"
     },
     "mac": {
       "target": [
@@ -81,13 +120,10 @@
       "category": "public.app-category.productivity",
       "icon": "assets/icon.icns",
       "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "gatekeeperAssess": false
     },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+    "dmg": {
+      "artifactName": "${productName}-${version}.dmg"
     }
   }
 }

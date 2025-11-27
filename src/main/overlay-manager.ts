@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
+import * as fs from 'fs';
 import { app } from 'electron';
 
 export class OverlayManager {
@@ -8,10 +9,14 @@ export class OverlayManager {
 
   constructor() {}
 
-  start(): Promise<boolean> {
-    return new Promise((resolve) => {
-      // Path to overlay executable (Release build)
-      const overlayPath = path.join(
+  private getOverlayPath(): string {
+    // Check if running in packaged app (production)
+    if (app.isPackaged) {
+      // In packaged app, overlay is in resources/overlay/
+      return path.join(process.resourcesPath, 'overlay', 'IntraViewOverlay.exe');
+    } else {
+      // In development, use the build output
+      return path.join(
         app.getAppPath(),
         'overlay',
         'build',
@@ -19,6 +24,20 @@ export class OverlayManager {
         'Release',
         'IntraViewOverlay.exe'
       );
+    }
+  }
+
+  start(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const overlayPath = this.getOverlayPath();
+
+      // Check if overlay executable exists
+      if (!fs.existsSync(overlayPath)) {
+        console.error('[Overlay] Executable not found at:', overlayPath);
+        console.error('[Overlay] Please build the overlay first: npm run build:overlay');
+        resolve(false);
+        return;
+      }
 
       console.log('[Overlay] Starting overlay process:', overlayPath);
 
